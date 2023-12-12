@@ -1,0 +1,271 @@
+---
+title: "COVID Data Analysis"
+author: "Zhen"
+date: "2023-12-06"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library, message=FALSE, warning=FALSE}
+# install.packages("tidyverse")
+library(tidyverse)
+library(lubridate)
+```
+
+## Import Data
+
+```{r}
+us_cases <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+
+global_cases <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv")
+
+us_deaths <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv")
+
+global_deaths <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv")
+
+```
+
+## Check Data
+
+```{r}
+
+us_cases
+global_cases
+us_deaths
+global_deaths
+
+```
+
+## Transform Data
+
+Transform data to be useable.
+
+```{r}
+library(lubridate)
+global_cases <- global_cases %>%
+    pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long), 
+                 names_to = "date",
+                 values_to = "cases") %>%
+    select(-c(Lat,Long))
+    
+    
+global_cases  
+```
+
+```{r}
+global_deaths <- global_deaths %>%
+    pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long), 
+                 names_to = "date",
+                 values_to = "deaths") %>%
+    select(-c(Lat,Long))
+
+global_deaths
+```
+
+```{r}
+us_cases <- us_cases %>%
+    pivot_longer(cols = -(UID:Combined_Key),
+                 names_to = "date",
+                 values_to = "cases") %>%
+    select(Admin2:cases) %>%
+    mutate(date = mdy(date)) %>%
+    select(-c(Lat, Long_))
+
+us_cases
+```
+
+```{r}
+us_deaths <- us_deaths %>%
+    pivot_longer(cols = -(UID:Population),
+                 names_to = "date",
+                 values_to = "deaths") %>%
+    select(Admin2:deaths) %>%
+    mutate(date = mdy(date)) %>%
+    select(-c(Lat, Long_))
+
+us_deaths
+```
+
+## Summary& Clean Data
+
+```{r}
+summary(us_cases)
+summary(us_deaths)
+summary(global_cases)
+summary(global_deaths)
+```
+
+```{r}
+library(lubridate)
+global <- global_cases %>%
+  full_join(global_deaths) %>%
+  rename(Country_Region =`Country/Region`,
+         Province_State = 'Province/State') %>%
+  mutate(date = mdy(date))
+
+global
+```
+
+```{r}
+
+us <- us_cases %>%
+  full_join(us_deaths)
+
+us
+```
+
+```{r}
+summary(us)
+summary(global)
+```
+
+From the summary, we found the cases and deaths column in us table have negative number, which should be positive number.
+
+```{r}
+us <- us %>%
+  group_by(Province_State,Country_Region, date) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths), Population = sum(Population)) %>%
+  mutate(death = abs(deaths), case = abs(cases)) %>%
+  select(Province_State, Country_Region, date, case, death, Population) %>%
+  ungroup()
+
+us
+```
+
+Add a column for death/case rate.
+
+```{r}
+us <- us %>%
+  group_by(Province_State,Country_Region, date) %>%
+  summarize(cases = sum(case), deaths = sum(death), Population = sum(Population)) %>%
+  mutate(death_case_rate = deaths/cases) %>%
+  select(Province_State, Country_Region, date, cases, deaths, death_case_rate,Population) %>%
+  ungroup()
+
+us
+```
+
+```{r}
+global <- global %>%
+  group_by(Province_State,Country_Region, date) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths)) %>%
+  mutate(death_case_rate = deaths/cases) %>%
+  select(Province_State, Country_Region, date, cases, deaths, death_case_rate) %>%
+  ungroup()
+
+global
+```
+
+```{r}
+summary(us)
+summary(global)
+
+```
+
+## Visualiazations
+
+Create liner graphs for the cases over time.
+
+```{r}
+usa <- us %>%
+  group_by(Country_Region, date) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths), Population = sum(Population)) %>%
+  mutate(death_case_rate = deaths/cases) %>%
+  select(Country_Region, date, cases, deaths, death_case_rate,Population) %>%
+  ungroup()
+ 
+```
+
+```{r}
+globals <- global %>%
+  group_by(date) %>%
+  summarize(cases = sum(cases), deaths = sum(deaths)) %>%
+  mutate(death_case_rate = deaths/cases) %>%
+  select(date, cases, deaths, death_case_rate) %>%
+  ungroup()
+
+globals
+```
+
+```{r}
+usa %>%
+  ggplot(aes(x= date, y = cases)) +
+  geom_point(aes(color = "cases")) + 
+  scale_y_log10() + 
+   theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90)) +
+  labs(title = "US COVID Case", y = NULL)+
+  guides(fill = FALSE)
+```
+
+```{r}
+globals %>%
+  ggplot(aes(x= date, y = cases)) +
+  geom_point(aes(color = "cases")) + 
+  scale_y_log10() + 
+   theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90)) +
+  labs(title = "Global COVID Case", y = NULL)+
+  guides(fill = FALSE)
+```
+
+From the graph, we found that the number of COVID-19 cases in global increased the most between March and June 2020, then gradually declined and leveled off around February 2022; the number of COVID-19 cases in global increased the most between February and May 2020, then gradually declined and leveled off around February 2022.
+
+Create liner graphs for the deaths over time.
+
+```{r}
+usa %>%
+  ggplot(aes(x= date, y = deaths)) +
+  geom_point(aes(color = "deaths")) + 
+  scale_y_log10() + 
+   theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90)) +
+  labs(title = "US COVID Deaths", y = NULL)+
+  guides(fill = FALSE)
+```
+
+```{r}
+globals %>%
+  ggplot(aes(x= date, y = deaths)) +
+  geom_point(aes(color = "deaths")) + 
+  scale_y_log10() + 
+   theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90)) +
+  labs(title = "Global COVID Deaths", y = NULL)+
+  guides(fill = FALSE)
+```
+
+From the graph, we found that the number of COVID-19 deaths in global increased the most between February and Apirl 2020, then gradually declined and leveled off around June 2021; the number of COVID-19 deaths in global increased the most between February and March 2020, then gradually declined and leveled off around May 2020.
+
+Create a liner graph for death/case rate in the US.
+
+```{r}
+usa %>%
+  ggplot(aes(x= date, y = death_case_rate)) +
+  geom_point(aes(color = "death case rate")) + 
+  scale_y_log10() + 
+   theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 90)) +
+  labs(title = "US COVID Death/Case Rate", y = NULL)+
+  guides(fill = FALSE)
+```
+
+From the graph we can tell that the death/case rate was very high at the beginning because we didn't have a cure for COVID-19. And it continued to decline after April 2020.I think it's because of the invention of the COVID-19 treatment drug.
+
+## Summary
+
+From this data, we can tell:
+
+Global COVID-19 Incidence Trends:
+The global number of COVID-19 cases experienced its most substantial surge between March and June 2020, followed by a gradual decline and stabilization by February 2022. Additionally, there was another notable increase in cases between February and May 2020, with a subsequent leveling off by February 2022.
+
+Global COVID-19 Mortality Patterns:
+The peak in global COVID-19-related deaths occurred between February and April 2020, showing a gradual decline and stabilization around June 2021. Similarly, another spike in deaths was observed between February and March 2020, followed by a leveling off around May 2020.
+
+Death/Case Ratio and Treatment Advancements:
+The initial high death-to-case ratio, attributed to the absence of a cure for COVID-19, began to decline after April 2020. This decline is likely linked to advancements in the development and availability of COVID-19 treatment drugs, indicating a positive impact on mortality rates.
