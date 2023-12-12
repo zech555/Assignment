@@ -1,0 +1,207 @@
+---
+title: "NYPD Shooting Incident Data Analysis"
+author: "Zhen"
+date: "2023-11-20"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library, message=FALSE, warning=FALSE}
+# install.packages("tidyverse")
+library(tidyverse)
+library(lubridate)
+```
+
+## Import Data
+
+```{r load}
+NYPD_Shooting <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+head(NYPD_Shooting)
+summary(NYPD_Shooting)
+```
+
+## Transform Data
+
+Transform data to the new table that only including columns we need: INCIDENT_KEY, OCCUR_DATE, OCCUR_TIME, BORO, JURISDICTION_CODE, STATISTICAL_MURDER_FLAG, PERP_AGE_GROUP,PERP_RACE,PERP_SEX, VIC_AGE_GROUP, VIC_RACE, VIC_SEX.
+
+```{r}
+trans <- NYPD_Shooting %>% select(INCIDENT_KEY,
+                                  OCCUR_DATE,
+                                  OCCUR_TIME,
+                                  BORO,
+                                  JURISDICTION_CODE,
+                                  STATISTICAL_MURDER_FLAG,
+                                  PERP_AGE_GROUP, 
+                                  PERP_SEX,
+                                  PERP_RACE,
+                                  VIC_AGE_GROUP,
+                                  VIC_SEX, 
+                                  VIC_RACE)
+```
+
+Find the number of missing value for each column in new table
+
+```{r}
+lapply(trans, function(x) sum(is.na(x)))
+```
+
+We noticed that the main missing values are the information of perpetrators. The reason for those missing is those cases are possible still ongoing investigation. We will leave those as 'Unknown' in the column.
+
+```{r}
+trans <- trans %>% replace_na(list(PERP_AGE_GROUP = 'Unknown', PERP_SEX = 'Unknown', PERP_RACE = 'Unknown'))
+```
+
+Convert column type:
+
+-   **INCIDENT_KEY** Should be string.
+-   **BORO** Should be factor.
+-   **PRECINCT** Should be factor.
+-   **JURISDICTION_CODE** Should be factor.
+-   **PERP_AGE_GROUP** Should be factor.
+-   **PERP_SEX** Should be factor.
+-   **PERP_RACE** Should be factor.
+-   **VIC_AGE_GROUP** Should be factor.
+-   **VIC_SEX** Should be factor.
+-   **VIC_RACE** Should be factor.
+
+```{r}
+trans$INCIDENT_KEY = as.character(trans$INCIDENT_KEY)
+trans$JURISDICTION_CODE = as.factor(trans$JURISDICTION_CODE)
+trans$PERP_AGE_GROUP= as.factor(trans$PERP_AGE_GROUP)
+trans$PERP_SEX= as.factor(trans$PERP_SEX)
+trans$PERP_SEX= as.factor(trans$PERP_SEX)
+trans$PERP_RACE= as.factor(trans$PERP_RACE)
+trans$VIC_AGE_GROUP= as.factor(trans$VIC_AGE_GROUP)
+trans$VIC_SEX= as.factor(trans$VIC_SEX)
+trans$VIC_RACE= as.factor(trans$VIC_RACE)
+trans$BORO= as.factor(trans$BORO)
+```
+
+Check the summary of table trans
+
+```{r}
+summary(trans)
+```
+
+We found that we still need to clean up the following columns: PERP_AGE_GROUP, PERP_SEX, PERP_RACE, VIC_SEX, VIC_AGE_GROUP
+
+```{r}
+trans$PERP_AGE_GROUP = recode(trans$PERP_AGE_GROUP, UNKNOWN = 'Unknown')
+trans$PERP_SEX = recode(trans$PERP_SEX, U = 'Unknown')
+trans$PERP_RACE = recode(trans$PERP_RACE, UNKNOWN = 'Unknown')
+trans$VIC_SEX = recode(trans$VIC_SEX, U = 'Unknown')
+trans = subset(trans, VIC_AGE_GROUP != '1022' & PERP_AGE_GROUP != '1020' & PERP_AGE_GROUP != '224' & PERP_AGE_GROUP != '940')
+```
+
+Check the summary of table trans
+
+```{r}
+summary(trans)
+```
+
+## Visualizations and Analysis
+
+**1. Incident count by Borough**
+
+```{r}
+a <- ggplot(trans, aes(x = BORO, fill = STATISTICAL_MURDER_FLAG)) +
+      geom_bar() + 
+      labs(title = 'Incident Count by Borogh',
+      x = 'Boroughs', 
+      y = 'Count') 
+      
+
+a
+```
+
+From the chart we found that Brooklyn has the most shooting and murder incident; And Staten Island has the least shooting and murder incident.
+
+**2. Perpetrators Information Analysis.**
+
+a.  Age
+
+```{r}
+b  <- ggplot(trans, aes(x = PERP_AGE_GROUP)) +geom_bar() + 
+      labs(title = 'Perpetrator Age Group',
+      x = 'Age Group', 
+      y = 'Count')
+      
+b
+```
+
+b.  Sex
+
+```{r}
+c  <- ggplot(trans, aes(x = PERP_SEX)) +geom_bar() + 
+      labs(title = 'Perpetrator Sex',
+      x = 'Sex', 
+      y = 'Count')
+      
+c
+```
+
+From the chart, we found the perpetrators are mostly in age group 18-24 and 25-44, most of them are male.
+
+**2. Victims Information Analysis.**
+
+a.  Age
+
+```{r}
+e  <- ggplot(trans, aes(x = VIC_AGE_GROUP)) +geom_bar() + 
+      labs(title = 'Perpetrator Age Group',
+      x = 'Age Group', 
+      y = 'Count')
+      
+e
+```
+
+b.  Sex
+
+```{r}
+f  <- ggplot(trans, aes(x = VIC_SEX)) +geom_bar() + 
+      labs(title = 'Perpetrator Sex',
+      x = 'Sex', 
+      y = 'Count')
+      
+f
+```
+
+From the chart, we found victims are mostly in age group 18-24 and 25-44, most of them are male.
+
+**3. Incident Time Analysis.**
+
+The day and time has the most incident.
+
+Transform hour of the day.
+
+```{r}
+trans$OCCUR_HOUR = hour(hms(as.character(trans$OCCUR_TIME)))
+```
+
+Visualization
+
+```{r}
+h <- ggplot(trans, aes(x = OCCUR_HOUR)) +geom_bar() + 
+      labs(title = 'Incident Count by Time',
+      x = 'Time', 
+      y = 'Count')
+      
+h
+```
+
+From the chart, we found that midnight time has the most incident and noon time has the least incident.
+
+## Summary
+
+From this data, we can tell:
+
+1.  Brooklyn is the most dangerous borough in New York City, and Staten Island is the safest borough in New York City.
+
+2.  The age groups of the perpetrators are mainly males aged 18-24 and 25-44; the age groups of the victims are mainly males aged 18-24 and 25-44. This means that young people often engage in impulsive actions that they regret. We should avoid conflicts with young people. Happy emotion happy life.
+
+3.  The time of day with the most incidents is midnight, unless there is an emergency, avoid going out at night
